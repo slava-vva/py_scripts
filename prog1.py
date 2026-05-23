@@ -30,6 +30,7 @@ class Optypes:
 
 clc = Calc()
 while True:
+    
     val1 = float(input("Enter the first val1:"))
     val2 = float(input("Enter the second val2:"))
     optype = input("Enter the type of operation:")
