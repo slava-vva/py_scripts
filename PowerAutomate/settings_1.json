@@ -1,0 +1,116 @@
+{
+  "definition": {
+    "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+    "actions": {
+      "Get_Subcontractors": {
+        "type": "OpenApiConnection",
+        "inputs": {
+          "host": {
+            "connectionName": "excelonlinebusiness",
+            "operationId": "GetItems",
+            "apiId": "/providers/Microsoft.PowerApps/apis/shared_excelonlinebusiness"
+          },
+          "parameters": {
+            "source": "sites/your-site",
+            "drive": "Documents",
+            "file": "/Shared Documents/Subcontractors.xlsx",
+            "table": "Table1"
+          }
+        }
+      },
+      "Filter_Company": {
+        "runAfter": {
+          "Get_Subcontractors": ["Succeeded"]
+        },
+        "type": "Query",
+        "inputs": {
+          "from": "@outputs('Get_Subcontractors')?['body/value']",
+          "where": "@equals(item()?['Email'], triggerOutputs()?['body/from'])"
+        }
+      },
+      "Check_Company": {
+        "runAfter": {
+          "Filter_Company": ["Succeeded"]
+        },
+        "type": "If",
+        "expression": {
+          "greater": [
+            "@length(body('Filter_Company'))",
+            0
+          ]
+        },
+        "actions": {
+          "Compose_Company": {
+            "type": "Compose",
+            "inputs": "@first(body('Filter_Company'))?['Company']"
+          },
+          "Apply_to_each_Attachments": {
+            "type": "Foreach",
+            "foreach": "@triggerOutputs()?['body/attachments']",
+            "actions": {
+              "Create_File": {
+                "type": "OpenApiConnection",
+                "inputs": {
+                  "host": {
+                    "connectionName": "sharepoint",
+                    "operationId": "CreateFile",
+                    "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+                  },
+                  "parameters": {
+                    "dataset": "https://yourtenant.sharepoint.com/sites/yoursite",
+                    "folderPath": "@{concat('/Invoices/', outputs('Compose_Company'), '/', formatDateTime(triggerOutputs()?['body/dateTimeReceived'],'yyyy'), '/', formatDateTime(triggerOutputs()?['body/dateTimeReceived'],'MM'))}",
+                    "name": "@{items('Apply_to_each_Attachments')?['name']}",
+                    "body": "@{items('Apply_to_each_Attachments')?['contentBytes']}"
+                  }
+                }
+              },
+              "Log_to_Excel": {
+                "runAfter": {
+                  "Create_File": ["Succeeded"]
+                },
+                "type": "OpenApiConnection",
+                "inputs": {
+                  "host": {
+                    "connectionName": "excelonlinebusiness",
+                    "operationId": "AddRowV2",
+                    "apiId": "/providers/Microsoft.PowerApps/apis/shared_excelonlinebusiness"
+                  },
+                  "parameters": {
+                    "source": "sites/your-site",
+                    "drive": "Documents",
+                    "file": "/Shared Documents/InvoiceLog.xlsx",
+                    "table": "Table1",
+                    "item/Company": "@outputs('Compose_Company')",
+                    "item/Email": "@triggerOutputs()?['body/from']",
+                    "item/DateReceived": "@triggerOutputs()?['body/dateTimeReceived']",
+                    "item/FilePath": "@outputs('Create_File')?['body/Path']"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "else": {
+          "actions": {}
+        }
+      }
+    },
+    "triggers": {
+      "When_a_new_email_arrives": {
+        "type": "OpenApiConnection",
+        "inputs": {
+          "host": {
+            "connectionName": "office365",
+            "operationId": "OnNewEmailV3",
+            "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365"
+          },
+          "parameters": {
+            "includeAttachments": true,
+            "onlyWithAttachments": true
+          }
+        }
+      }
+    }
+  }
+}
+``
